@@ -10,7 +10,10 @@ jobs:
   build-and-test:
     name: Build & Test (.NET 10)
     runs-on: ubuntu-latest
-
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: write
     defaults:
       run:
         working-directory: MyRecipeBook
