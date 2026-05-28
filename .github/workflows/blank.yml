@@ -11,12 +11,9 @@ jobs:
     name: Build & Test (.NET 10)
     runs-on: ubuntu-latest
 
-    # O Docker já vem instalado no ubuntu-latest,
-    # mas garantimos que o serviço está ativo para o Testcontainers
-    services:
-      docker:
-        image: docker:dind
-        options: --privileged
+    defaults:
+      run:
+        working-directory: MyRecipeBook
 
     steps:
       # ─────────────────────────────────────────
@@ -40,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/global.json') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('MyRecipeBook/**/*.csproj', 'MyRecipeBook/**/global.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -51,15 +48,13 @@ jobs:
         run: dotnet restore
 
       # ─────────────────────────────────────────
-      # 5. Build (Release para garantir otimizações)
+      # 5. Build
       # ─────────────────────────────────────────
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
       # ─────────────────────────────────────────
       # 6. Testes com coleta de code coverage
-      #    --collect:"XPlat Code Coverage" usa o
-      #    coverlet integrado ao xUnit no .NET
       # ─────────────────────────────────────────
       - name: Run tests with coverage
         run: |
@@ -72,27 +67,23 @@ jobs:
             --logger "console;verbosity=detailed" \
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
         env:
-          # Variável necessária para o Testcontainers localizar o socket do Docker
           DOCKER_HOST: unix:///var/run/docker.sock
-          # Desabilita o Ryuk (reaper) — recomendado em CI para evitar problemas de permissão
           TESTCONTAINERS_RYUK_DISABLED: "true"
 
       # ─────────────────────────────────────────
       # 7. Publica resultados dos testes (TRX)
-      #    Aparece na aba "Tests" do PR/commit
       # ─────────────────────────────────────────
       - name: Publish test results
         uses: dorny/test-reporter@v1
-        if: always() # roda mesmo se os testes falharem
+        if: always()
         with:
           name: xUnit Test Results
-          path: "TestResults/**/*.trx"
+          path: "MyRecipeBook/TestResults/**/*.trx"
           reporter: dotnet-trx
           fail-on-error: true
 
       # ─────────────────────────────────────────
-      # 8. Gera relatório HTML de coverage com
-      #    ReportGenerator (ferramenta oficial .NET)
+      # 8. Gera relatório HTML de coverage
       # ─────────────────────────────────────────
       - name: Install ReportGenerator
         run: dotnet tool install --global dotnet-reportgenerator-globaltool
@@ -100,39 +91,37 @@ jobs:
       - name: Generate coverage report
         run: |
           reportgenerator \
-            -reports:"TestResults/**/coverage.cobertura.xml" \
-            -targetdir:"TestResults/CoverageReport" \
+            -reports:"./TestResults/**/coverage.cobertura.xml" \
+            -targetdir:"./TestResults/CoverageReport" \
             -reporttypes:"Html;Cobertura;Badges" \
             -verbosity:Info
 
       # ─────────────────────────────────────────
-      # 9. Faz upload do relatório como artefato
-      #    Download disponível por 30 dias na UI
+      # 9. Upload do relatório como artefato
       # ─────────────────────────────────────────
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-report
-          path: TestResults/CoverageReport/
+          path: MyRecipeBook/TestResults/CoverageReport/
           retention-days: 30
 
       # ─────────────────────────────────────────
-      # 10. Publica resumo de coverage no PR
-      #     (comentário com % de cobertura)
+      # 10. Resumo de coverage no PR
       # ─────────────────────────────────────────
       - name: Code coverage summary
         uses: irongut/CodeCoverageSummary@v1.3.0
         with:
-          filename: "TestResults/**/coverage.cobertura.xml"
+          filename: "MyRecipeBook/TestResults/**/coverage.cobertura.xml"
           badge: true
-          fail_below_min: false        # mude para true para bloquear PRs abaixo do mínimo
+          fail_below_min: false
           format: markdown
           hide_branch_rate: false
           hide_complexity: false
           indicators: true
-          output: both                 # gera arquivo E adiciona ao $GITHUB_STEP_SUMMARY
-          thresholds: "60 80"          # amarelo < 60%, verde entre 60-80%, azul > 80%
+          output: both
+          thresholds: "60 80"
 
       - name: Add coverage PR comment
         uses: marocchino/sticky-pull-request-comment@v2
